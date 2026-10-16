@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Independent observation reader. URL is never part of the command or logs.
+*/2 * * * * waze-monitor umask 027; /usr/bin/flock -n /var/lib/waze-monitor/collector.lock /usr/bin/timeout 45 /usr/bin/python3 /opt/waze-monitor/collect_waze.py >/dev/null 2>&1

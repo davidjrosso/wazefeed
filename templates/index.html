@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="app-base" content="{{BASE}}">
+  <title>Río Tercero · Administrar cierres</title>
+  <link rel="stylesheet" href="{{BASE}}/assets/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="{{BASE}}/assets/style.css">
+  <script src="{{BASE}}/assets/vendor/leaflet/leaflet.js" defer></script>
+  <script src="{{BASE}}/assets/client.js" defer></script>
+  <script src="{{BASE}}/assets/operations.js" defer></script>
+</head>
+<body>
+<header><a class="brand" href="{{BASE}}/"><span class="mark">R3</span><span>RÍO TERCERO<small>Gestión de cierres</small></span></a><div class="toolbar"><span class="tag">CIERRES POR TRAMO</span><a id="login" href="{{BASE}}/login">Iniciar sesión</a><button id="logout" hidden>Cerrar sesión</button></div></header>
+<main>
+  {{ENV_NOTICE}}
+  <div class="eyebrow">DEFENSA CIVIL · TRÁNSITO</div><h1>Operativos de la ciudad</h1>
+  <p class="intro">Elegí una plantilla, revisá las calles y activá el operativo.</p>
+  <div class="toolbar"><span id="identity" class="badge">Sin sesión</span><button id="admin-toggle" hidden>Administrar calles y plantillas</button></div>
+  <div class="notice">Guardar o quitar un tramo no cierra calles. Publicá un cierre solo cuando esté confirmado en la vía pública. La aplicación actualiza el feed; la aprobación y aplicación en Waze se comprueban en Partner Hub.</div>
+  <p id="message" role="status" aria-live="polite"></p>
+  <section id="operations-panel" hidden>
+    <div class="cardhead"><h2>Plantillas disponibles</h2><span>Preparadas por administración</span></div>
+    <div id="template-cards" class="template-grid"></div>
+    <p id="no-templates" class="notice" hidden>Todavía no hay plantillas. Administración debe prepararlas y revisar sus calles. No se creó ningún operativo automáticamente.</p>
+    <section class="card"><h2>En curso y próximos</h2><p class="small">Estado de nuestro feed. No es una confirmación de aplicación en Waze. Los calendarios publican los próximos 7 días; los feriados se cargan como excepciones.</p><div id="run-cards"></div></section>
+  </section>
+  <div id="admin-workspace" hidden>
+  <section class="card template-builder">
+    <h2 id="template-heading">Preparar una plantilla compartida</h2>
+    <p>Seleccioná las calles en el mapa o la tabla de abajo. Guardar una plantilla no activa cierres.</p>
+    <form id="template-form">
+      <div class="form-grid">
+        <label>Nombre<input id="template-name" required maxlength="60" placeholder="Lluvias intensas"></label>
+        <label>Motivo<select id="template-reason"><option>Inundación</option><option>Escuelas</option><option>Obras</option><option>Evento</option><option>Otro</option></select></label>
+        <label>Descripción para Waze<input id="template-description" required maxlength="39" value="Cierre por inundación"></label>
+        <label>Duración (minutos)<input id="template-duration" type="number" min="5" max="1440" value="60" required></label>
+      </div>
+      <label class="check-label"><input id="template-recurring" type="checkbox">Incluir calendario semanal (se habilita por separado)</label>
+      <div id="schedule-fields" hidden>
+        <div class="form-grid"><label>Desde<input id="schedule-from" type="date"></label><label>Hasta<input id="schedule-until" type="date"></label><label>Hora de inicio<input id="schedule-time" type="time" value="08:00"></label></div>
+        <fieldset id="weekdays"><legend>Días · hora de Argentina</legend><label><input type="checkbox" value="0" checked>Lun</label><label><input type="checkbox" value="1" checked>Mar</label><label><input type="checkbox" value="2" checked>Mié</label><label><input type="checkbox" value="3" checked>Jue</label><label><input type="checkbox" value="4" checked>Vie</label><label><input type="checkbox" value="5">Sáb</label><label><input type="checkbox" value="6">Dom</label></fieldset>
+        <label>Excepciones: feriados, vacaciones, suspensiones (una fecha AAAA-MM-DD por línea)<textarea id="schedule-exceptions" rows="3"></textarea></label>
+      </div>
+      <p id="template-selection" class="notice">Seleccioná las calles abajo.</p>
+      <label class="check-label"><input id="template-reviewed" type="checkbox" required>Revisé los tramos, los sentidos y el horario de esta plantilla.</label>
+      <div class="toolbar"><button id="save-template" class="primary" type="submit">Guardar plantilla</button><button id="cancel-template" type="button">Nueva plantilla / cancelar edición</button></div>
+    </form>
+    <details><summary>Importar calles seleccionadas en Waze</summary><p class="small">1. <a href="{{BASE}}/assets/cierres-municipales.user.js" target="_blank" rel="noopener">Instalar o actualizar el complemento 0.3.0</a> en Tampermonkey. 2. En Waze, seleccioná las calles y abrí «Configuración, sentidos y plantillas → Exportar calles para el panel municipal». 3. Importá el JSON y revisá el resumen. No se crean cierres. Los extremos importados figuran como nodos Waze; podés completar los nombres de las esquinas con Editar.</p><input id="import-file" type="file" accept=".json,application/json" aria-label="Archivo de calles de Waze"></details>
+  </section>
+  <div class="layout work-layout">
+    <section class="card mapcard">
+      <div class="cardhead"><h2>Mapa de tramos</h2><div class="toolbar"><button id="fit-map">Ver todos</button><button id="add-segment" class="primary" disabled>Agregar tramo</button></div></div>
+      <p id="map-hint" class="small">Seleccioná tramos en el mapa o en la tabla. Los puntos numerados indican el orden del recorrido.</p>
+      <div id="map" aria-label="Mapa interactivo de Río Tercero"></div>
+      <p id="tile-warning" class="small" role="status" hidden>El mapa de fondo no está disponible. Los recorridos guardados siguen visibles; evitá dibujar un tramo sin una referencia confiable.</p>
+      <div class="legend"><span><i class="dot available"></i>Disponible</span><span><i class="dot selected"></i>Seleccionado</span><span><i class="dot closed"></i>Cierre activo</span><span><i class="dot editing"></i>En edición</span></div>
+      <p class="small">Cartografía de OpenStreetMap, no es el mapa interno de Waze. El trazado es manual y no se ajusta automáticamente a las calles. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Informar un problema del mapa</a>.</p>
+    </section>
+    <section class="card controls">
+      <div id="status" class="status" aria-live="polite">Consultando servidor…</div>
+      <p id="timing" class="small">Comprobando el estado de los cierres.</p>
+      <div class="selection-box"><strong id="selection-count">0 tramos seleccionados</strong><p id="selection-summary" class="small"></p></div>
+      <label for="reason">Motivo del cierre</label><input id="reason" value="Cierre por inundación" maxlength="39">
+      <button id="activate" class="primary" disabled>Cerrar seleccionados por 1 hora</button>
+      <button id="reopen" disabled>Reabrir seleccionados</button>
+      <button id="clear-selection" disabled>Limpiar selección</button>
+      <p class="small">Cada cierre dura 3.600 segundos desde su publicación. Reabrir mantiene el identificador y el inicio del cierre. Podés operar un solo tramo o varios a la vez.</p>
+    </section>
+  </div>
+  <section id="editor" class="card editor" hidden aria-labelledby="editor-title">
+    <div class="cardhead"><h2 id="editor-title">Agregar tramo</h2><button id="cancel-editor" type="button">Cancelar edición</button></div>
+    <p class="small">Marcá el inicio, los puntos intermedios y el final sobre el mapa, en el orden de circulación. Arrastrá los puntos para corregirlos. Guardar no publica un cierre.</p>
+    <form id="segment-form">
+      <div class="form-grid">
+        <label>Calle<input id="street" required maxlength="120" autocomplete="off"></label>
+        <label>Desde (intersección)<input id="from" required maxlength="120" autocomplete="off"></label>
+        <label>Hasta (intersección)<input id="to" required maxlength="120" autocomplete="off"></label>
+        <label>Sentido<select id="direction"><option value="ONE_DIRECTION">Un sentido: desde → hasta</option><option value="BOTH_DIRECTIONS">Ambos sentidos</option></select></label>
+        <label>ID de segmento Waze (opcional)<input id="waze-id" inputmode="numeric" pattern="[0-9]*" maxlength="20"></label>
+      </div>
+      <div class="toolbar"><button id="undo-point" type="button">Quitar último punto</button><button id="reverse-points" type="button">Invertir recorrido</button><button id="clear-points" type="button">Borrar dibujo</button><span id="point-count">0 puntos</span></div>
+      <details><summary>Ver coordenadas del recorrido</summary><textarea id="coordinates" readonly rows="4" aria-label="Coordenadas del recorrido"></textarea></details>
+      <label class="check-label"><input id="geometry-confirmed" type="checkbox" required>Revisé las esquinas, el trazado y el sentido. Entiendo que Waze debe validar su correspondencia.</label>
+      <p id="editor-message" role="status" class="small"></p><button id="save-segment" class="primary" type="submit">Guardar tramo</button>
+    </form>
+  </section>
+  <section class="card tablecard">
+    <div class="cardhead"><h2>Administrar calles</h2><div class="toolbar"><button id="select-visible" disabled>Seleccionar visibles</button><label class="check-label"><input type="checkbox" id="show-archived">Ver archivados</label></div></div>
+    <label for="filter">Buscar calle o intersección</label><input id="filter" type="search" placeholder="Ej.: Alsina, Bolívar, Sarmiento…">
+    <div class="tablewrap"><table><thead><tr><th>Elegir</th><th>Tramo</th><th>Sentido</th><th>Estado</th><th>Administración</th></tr></thead><tbody id="segments"></tbody></table></div>
+    <p id="empty-list" class="small" hidden>No hay tramos para mostrar con este filtro.</p>
+    <p class="small">Quitar del mapa archiva el tramo, no borra el historial. Un tramo con cierre activo debe reabrirse antes de editarlo o archivarlo.</p>
+  </section>
+  </div>
+  <div class="bottom">
+    <section class="card"><h2>Conexión con Waze</h2><p class="small">La dirección del feed no cambia al administrar calles. Los cierres terminados permanecen 48 horas en el feed para comunicar su finalización.</p><a id="feedurl" class="docs" href="{{BASE}}/feed.json" target="_blank" rel="noopener">Ver feed</a><button id="copy">Copiar URL del feed</button><a class="docs" href="{{BASE}}/sector.geojson" target="_blank" rel="noopener">Ver tramos en GeoJSON</a><p class="small">Validación y transición del feed: pendientes de coordinar en Partner Hub.</p></section>
+    <section class="card"><h2>Historial de operaciones</h2><p class="small">Hora de Argentina · Se muestran las últimas 500 operaciones.</p><ul id="history" class="history"></ul></section>
+  </div>
+  <footer>Río Tercero, Córdoba · No es una aplicación oficial de Waze · Geometría inicial © OpenStreetMap contributors (ODbL)</footer>
+</main>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><p id="confirm-warning"></p><div id="confirm-map"></div><ul id="confirm-list"></ul><div class="toolbar"><button id="confirm-cancel">Cancelar</button><button id="confirm-submit" class="primary">Confirmar</button></div></dialog>
+</body></html>

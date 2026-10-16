@@ -1,0 +1,12 @@
+{
+  "id": "rio-tercero",
+  "name": "Río Tercero",
+  "region": "Córdoba, Argentina",
+  "timezone": "America/Argentina/Cordoba",
+  "center": [-32.173, -64.114],
+  "bounds": [-32.235, -64.195, -32.12, -64.04],
+  "areaLabel": "Área operativa urbana configurada · no es un límite catastral",
+  "tileUrl": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "tileAttribution": "© OpenStreetMap contributors",
+  "contactEmail": ""
+}

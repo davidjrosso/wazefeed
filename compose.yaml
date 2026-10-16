@@ -1,0 +1,40 @@
+version: "3.7"
+services:
+  waze:
+    build: .
+    image: waze-closures:20261009-monitor
+    restart: unless-stopped
+    # No TCP ports, bridge network, DNS or Internet at runtime.
+    network_mode: none
+    user: "10001:33"
+    read_only: true
+    environment:
+      WAZE_PUBLIC_URL: https://davidrosso.ar/waze
+      WAZE_DB_PATH: /data/state.sqlite3
+      WAZE_PASSWORD_HASH_FILE: /run/waze-secrets/operator.hash
+      WAZE_OPERATOR_USER: operador
+      WAZE_TRUSTED_PROXIES: ""
+      WAZE_TRUST_UNIX_SOCKET: "1"
+      WAZE_MONITOR_PATH: /monitor/current.json
+    volumes:
+      - /var/lib/waze-closures:/data
+      - /etc/waze-closures:/run/waze-secrets:ro
+      - /var/lib/waze-closures-socket:/run/waze
+      - /var/lib/waze-monitor:/monitor:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
