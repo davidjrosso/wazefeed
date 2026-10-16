@@ -19,7 +19,7 @@ El backend usa la biblioteca estándar de Python y Gunicorn como servidor de pro
 
 SQLite almacena el estado operativo, cuentas, sesiones e historiales. Las escrituras se realizan en transacciones; la capa operativa valida revisiones y solicitudes repetidas para evitar publicaciones duplicadas. Las sesiones se vinculan a las credenciales para invalidarlas cuando cambia el acceso.
 
-`operations.py`, `direct.py` y `agenda.py` concentran las reglas funcionales. `app.py` aplica autenticación, autorización, validación HTTP y persistencia. `core.py` genera el feed de cierres vigentes. `catalog.py` carga el catálogo y `tools/build_catalog.py` permite regenerarlo explícitamente.
+`operations.py`, `direct.py` y `agenda.py` concentran las reglas funcionales. `app.py` aplica autenticación, autorización, validación HTTP y persistencia. `core.py` genera el feed con eventos futuros, activos y finalizados hace menos de 48 horas; ver [la guía del feed CIFS](FEED_CIFS.md). `catalog.py` carga el catálogo y `tools/build_catalog.py` permite regenerarlo explícitamente.
 
 El recolector es un proceso separado con acceso de red. Valida la URL esperada, rechaza redirecciones y escribe una caché atómica. La aplicación lee esa caché sin necesitar acceso de red al proveedor. Los estados y notas municipales se guardan en SQLite, sin modificar la alerta en Waze.
 
@@ -31,7 +31,7 @@ Todos los ejemplos usan el prefijo `/waze`. Las rutas públicas no requieren ses
 | --- | --- |
 | `GET /waze/`, `/waze/login`, `/waze/legacy` | Páginas públicas; acciones operativas protegidas |
 | `GET /waze/healthz` | Salud del servicio |
-| `GET /waze/feed.json` | Feed CIFS público de cierres vigentes |
+| `GET /waze/feed.json` | Feed CIFS público con cierres programados, activos y recientemente finalizados |
 | `GET /waze/roads.json`, `/waze/sector.geojson` | Geometrías públicas |
 | `POST /waze/api/login` | Autenticar con usuario y contraseña |
 | `POST /waze/api/logout` | Invalidar sesión |

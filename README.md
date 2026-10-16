@@ -20,6 +20,7 @@ Panel web para gestionar cierres de calles y consultar alertas de tránsito en R
 2. Ejecutar la [instalación local](docs/INSTALACION.md), sin conexiones a cuentas Waze reales.
 3. Consultar [arquitectura y API](docs/ARQUITECTURA.md).
 4. Revisar [despliegue y operación](docs/DESPLIEGUE.md), [seguridad](SECURITY.md) y [verificación](docs/VERIFICACION.md).
+5. Consultar [cómo se arma el feed CIFS](docs/FEED_CIFS.md): recorrido del código, campos, ejemplo reproducible y documentación oficial de Waze.
 
 ## Inicio rápido
 
