@@ -26,8 +26,8 @@ Panel web para gestionar cierres de calles y consultar alertas de tránsito en R
 Requisitos: **Python 3.12** y las dependencias de `requirements.txt`. El servicio usa la biblioteca estándar y datos de zona horaria de `tzdata`; Gunicorn se utiliza en Linux para producción. Node.js permite ejecutar las pruebas del cliente.
 
 ```sh
-git clone https://github.com/davidjrosso/waze-rio-tercero.git
-cd waze-rio-tercero
+git clone https://github.com/davidjrosso/wazefeed.git
+cd wazefeed
 python -m venv .venv
 ```
 
