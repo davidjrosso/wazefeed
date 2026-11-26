@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 10001 --create-home app
-COPY app.py core.py operations.py catalog.py direct.py agenda.py accounts.py monitoring.py collect_waze.py observation_store.py backup_observations.py history_dashboard.py wsgi.py manage.py healthcheck.py ./
+COPY app.py core.py operations.py catalog.py direct.py agenda.py accounts.py monitoring.py collect_waze.py observation_store.py backup_observations.py history_dashboard.py history_tools.py wsgi.py manage.py healthcheck.py ./
 COPY config ./config
 COPY static ./static
 COPY templates ./templates

@@ -11,6 +11,8 @@ Panel web para gestionar cierres de calles y consultar alertas de tránsito en R
 - Administrar cuentas con roles de administración, operación y consulta.
 - Consultar alertas Waze y registrar su seguimiento municipal con historial.
 - Archivar cada consulta de alertas en una base SQLite independiente, con versiones y reapariciones, mediante el recolector programado cada dos minutos.
+- Guardar nivel del reportante, tipo de vía y origen municipal cuando Waze los informa, sin atribuir identidad personal.
+- Reproducir lecturas históricas en el mapa, guardar zonas circulares compartidas, revisar pares de avisos cercanos y resumir resultados de investigación.
 - Consultar históricos y estadísticas en `/waze/history`: comparación con el período anterior, presencia por día/hora, mapa de zonas de 100 m, permanencia observada, evolución de señales y notas de investigación con autor y fecha. Acceso autenticado; las cuentas de consulta no pueden escribir.
 - Mantener estado persistente en SQLite, control de versiones e idempotencia de solicitudes.
 

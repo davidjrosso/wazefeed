@@ -6,6 +6,7 @@
   const date = stamp => new Intl.DateTimeFormat('es-AR',{timeZone:zone,dateStyle:'short',timeStyle:'short'}).format(new Date(stamp*1000));
   const today = () => {const p=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());return ['year','month','day'].map(k=>p.find(v=>v.type===k).value).join('-');};
   let data, applied, offset=0, loading=false, detailId, detailCursor, detailMap, detailMarker, detailGeneration=0;
+  let toolState={zones:[],canWrite:false,csrf:''}, replayMap,replayLayer,zoneCircle,zoneCenter=null,replayToken=0,replayTimer=null,playing=false;
   let recurrenceMap, recurrenceLayer, researchRevision=0, researchCsrf='', saving=false;
   const duration = seconds => seconds===null?'Sin datos':seconds<60?'Menos de 1 min':seconds<3600?Math.round(seconds/60)+' min':seconds<86400?(seconds/3600).toFixed(1)+' h':(seconds/86400).toFixed(1)+' días';
   const researchLabels={pending:'Pendiente',investigating:'En investigación',confirmed:'Confirmado',unverified:'No se pudo comprobar',discarded:'Descartado'};
@@ -23,11 +24,11 @@
     $('history-from').value=start.toISOString().slice(0,10);$('history-to').value=end;
     document.querySelectorAll('[data-days]').forEach(b=>b.classList.toggle('active',Number(b.dataset.days)===days));
   }
-  function params(){return new URLSearchParams({from:$('history-from').value,to:$('history-to').value,type:$('history-type').value,street:$('history-street').value.trim(),reliability:$('history-reliability').value});}
+  function params(){return new URLSearchParams({from:$('history-from').value,to:$('history-to').value,type:$('history-type').value,street:$('history-street').value.trim(),reliability:$('history-reliability').value,zone:$('history-zone').value});}
   function message(text){$('history-error').textContent=text;$('history-error').hidden=!text;}
   async function load(page=0, retain=false) {
     if(loading)return;
-    loading=true;message('');$('history-prev').disabled=true;$('history-next').disabled=true;
+    stopReplay();replayToken++;loading=true;message('');$('history-prev').disabled=true;$('history-next').disabled=true;
     $('history-results').setAttribute('aria-busy','true');
     const query=retain&&applied?new URLSearchParams(applied):params();query.set('offset',page);
     $('history-filters').querySelectorAll('input,select,button').forEach(n=>n.disabled=true);
@@ -74,7 +75,7 @@
     if(c.partial)coverage.push('Hay lecturas parciales: algunos registros no pudieron interpretarse.');
     $('history-coverage').textContent=coverage.join(' ');$('history-coverage').classList.toggle('caution',c.beforeArchive||c.gaps>0||!c.successful||c.partial>0);
     trend();horizontal('history-types',data.types);horizontal('history-streets',data.streets);
-    renderAnalysis();
+    renderAnalysis();renderTools();
     const rel=$('reliability-distribution');rel.replaceChildren();const max=Math.max(1,...data.reliability.map(r=>r.count));
     for(const r of data.reliability){const col=el('div','reliability-column'),bar=el('div','trend-bar');bar.style.height=(r.count/max*87)+'%';if(r.count)bar.append(el('span','',r.count));col.title=r.score+'/10: '+r.count+' reportes';col.append(bar,el('span','trend-label',r.score));rel.append(col);}
     $('history-reliability-note').textContent=(m.unique-m.reliabilityKnown)+' reportes sin fiabilidad informada. Se usa el último valor observado en el período.';
@@ -154,7 +155,7 @@
       if(!more){
         renderSignals(result.evolution);renderResearch(result.research);researchCsrf=result.csrf;$('research-form').hidden=!result.canWrite;$('research-readonly').hidden=result.canWrite;
         const facts=$('detail-facts');facts.replaceChildren();
-        for(const [label,value] of [['Publicado en Waze',date(r.publishedAt)],['Primera observación conservada',date(r.firstSeen)+(r.imported?' · importada':'')],['Primera observación en este período',date(r.periodFirst)],['Última observación en este período',date(r.periodLast)],['Fiabilidad',r.reliability===null?'No informada':r.reliability+' / 10'],['Confianza informada',r.confidence===null?'No informada':r.confidence],['Confirmaciones positivas',r.thumbsUp===null?'No informadas':r.thumbsUp],['Lecturas con este reporte',r.observations]]){const div=el('div');div.append(el('small','',label),el('strong','',value));facts.append(div);}
+        for(const [label,value] of [['Publicado en Waze',date(r.publishedAt)],['Primera observación conservada',date(r.firstSeen)+(r.imported?' · importada':'')],['Primera observación en este período',date(r.periodFirst)],['Última observación en este período',date(r.periodLast)],['Nivel del reportante',r.reportRating>=1&&r.reportRating<=6?r.reportRating+' / 6':'Sin informar'],['Origen municipal',r.municipalSource===true?'Informado como municipal':r.municipalSource===false?'No marcado como municipal':'Sin información conservada'],['Fiabilidad',r.reliability===null?'No informada':r.reliability+' / 10'],['Confianza informada',r.confidence===null?'No informada':r.confidence],['Confirmaciones positivas',r.thumbsUp===null?'No informadas':r.thumbsUp],['Lecturas con este reporte',r.observations]]){const div=el('div');div.append(el('small','',label),el('strong','',value));facts.append(div);}
         if(r.description){const div=el('div');div.append(el('small','','Descripción'),el('span','',r.description));facts.append(div);}
         if(!detailMap){detailMap=L.map('detail-map',{scrollWheelZoom:false}).setView(r.point,17);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors · Datos de Waze'}).addTo(detailMap);}
         detailMap.setView(r.point,17);if(detailMarker)detailMarker.remove();detailMarker=L.circleMarker(r.point,{radius:10,color:'#087f78',fillOpacity:.7}).addTo(detailMap);requestAnimationFrame(()=>detailMap.invalidateSize());
@@ -173,15 +174,76 @@
   $('research-form').onsubmit=async event=>{
     event.preventDefault();if(saving)return;saving=true;const id=detailId,generation=detailGeneration;
     $('research-save').disabled=true;$('research-message').textContent='Guardando…';
-    try{const result=await api('/api/history-notes',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':researchCsrf},body:JSON.stringify({id,revision:researchRevision,status:$('research-status').value,note:$('research-note').value})});if(generation===detailGeneration){renderResearch(result);$('research-note').value='';$('research-message').textContent='Seguimiento guardado con tu usuario y fecha.';}}
+    try{const result=await api('/api/history-notes',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':researchCsrf},body:JSON.stringify({id,revision:researchRevision,status:$('research-status').value,note:$('research-note').value})});if(generation===detailGeneration){renderResearch(result);$('research-note').value='';$('research-message').textContent='Seguimiento guardado con tu usuario y fecha.';await load(offset,true);}}
     catch(error){if(generation===detailGeneration)$('research-message').textContent=error.message+' La nota se conserva aquí. Si hubo un problema de conexión, reabrí la ficha para comprobar si se guardó.';}
     finally{saving=false;$('research-save').disabled=false;}
   };
+
+  function postTools(path,body){return api(path,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':toolState.csrf},body:JSON.stringify(body)});}
+  function zoneOptions(selected){
+    const select=$('history-zone');select.replaceChildren(el('option','','Toda el área'));select.firstChild.value='0';
+    for(const z of toolState.zones){const option=el('option','',z.name+' · '+z.radius+' m');option.value=z.id;select.append(option);}
+    select.value=String(selected||0);
+  }
+  async function initializeTools(){
+    try{toolState=await api('/api/history-tools');const initialZone=new URLSearchParams(location.search).get('zone')||'0';zoneOptions(initialZone);if(!$('history-zone').value)throw Error('La zona guardada de este enlace ya no está disponible.');$('zone-editor').hidden=!toolState.canWrite;await load();}
+    catch(e){message(e.message);}
+  }
+  function renderTools(){
+    const v=data.analysis.verification,summary=$('verification-summary');summary.replaceChildren();
+    if(data.zone)$('history-scope').textContent+=' Zona: '+data.zone.name+' (radio '+data.zone.radius+' m).';
+    for(const [label,value] of [['Con revisión final',v.reviewed+' de '+v.total],['Confirmados',v.counts.confirmed||0],['Sin comprobar',v.counts.unverified||0],['Descartados',v.counts.discarded||0],['Confirmados / revisados',v.confirmedPercent===null?'Sin muestra':v.confirmedPercent+'%']]){const card=el('div');card.append(el('small','',label),el('strong','',value));summary.append(card);}
+    const table=$('verification-breakdown');table.replaceChildren();
+    for(const r of [...v.types,...v.bands.map(b=>({...b,label:'Fiabilidad '+b.label}))]){const tr=el('tr');for(const value of [r.label,r.total,r.confirmed,r.unverified,r.discarded])tr.append(el('td','',value));table.append(tr);}
+    const root=$('related-pairs');root.replaceChildren();const related=data.analysis.related;
+    $('related-count').textContent='Ver '+related.pairs.length+' pares'+(related.truncated?' · límite de sugerencias alcanzado; acotá los filtros':'');
+    const statusLabels={pending:'Pendiente de revisión',related:'Vinculados por un operador',separate:'Separados por un operador'};
+    for(const pair of related.pairs){
+      const card=el('article','related-card'),status=el('p','history-help',statusLabels[pair.decision]+(pair.actor?' · '+pair.actor+' · '+date(pair.at):''));
+      card.append(el('strong','',pair.distance+' m de distancia'));
+      for(const r of pair.reports){const b=el('button','',r.street||'Calle sin nombre');b.type='button';b.onclick=()=>openDetail(r.id);card.append(b,el('small','',date(r.publishedAt)+' · '+r.id.slice(0,8)));}
+      card.append(status);
+      if(toolState.canWrite){const controls=el('div');for(const [decision,label] of [['related','Vincular avisos'],['separate','Son distintos'],['pending','Dejar pendiente']]){const b=el('button','',label);b.type='button';b.disabled=pair.decision===decision;b.onclick=async()=>{controls.querySelectorAll('button').forEach(x=>x.disabled=true);try{const result=await postTools('/api/history-links',{ids:pair.ids,revision:pair.revision,decision});pair.decision=result.decision;pair.revision=result.id;pair.actor=result.actor;pair.at=result.at;status.textContent=statusLabels[result.decision]+' · '+result.actor+' · '+date(result.at);$('related-message').textContent='Revisión guardada. Los reportes originales se conservan.';}catch(e){$('related-message').textContent=e.message;}finally{controls.querySelectorAll('button').forEach(x=>x.disabled=false);}};controls.append(b);}card.append(controls);}
+      root.append(card);
+    }
+    if(!related.pairs.length)root.append(el('p','history-help','No hay pares sugeridos con estos filtros.'));
+    $('replay-day').min=data.filters.from;$('replay-day').max=data.filters.to;
+    if(!$('replay-day').value||$('replay-day').value<data.filters.from||$('replay-day').value>data.filters.to)$('replay-day').value=data.filters.to;
+    if(!replayMap){replayMap=L.map('replay-map',{scrollWheelZoom:false}).setView([-32.173,-64.114],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors · Datos de Waze'}).addTo(replayMap);replayLayer=L.layerGroup().addTo(replayMap);replayMap.on('click',event=>{if(!toolState.canWrite||!$('zone-editor').open)return;zoneCenter=[event.latlng.lat,event.latlng.lng];$('zone-center').textContent='Centro: '+zoneCenter.map(x=>x.toFixed(5)).join(', ');drawZone();});}
+    if(data.zone){replayMap.setView([data.zone.lat,data.zone.lon],15);}
+    requestAnimationFrame(()=>replayMap.invalidateSize());setReplayEnd();
+  }
+  function drawZone(){if(zoneCircle)zoneCircle.remove();if(zoneCenter)zoneCircle=L.circle(zoneCenter,{radius:Number($('zone-radius').value)||500,color:'#d4a659',fillOpacity:.12}).addTo(replayMap);}
+  function stopReplay(){playing=false;clearTimeout(replayTimer);$('replay-play').textContent='Reproducir ▶';}
+  function selectedInstant(){return Date.parse($('replay-day').value+'T00:00:00-03:00')/1000+Number($('replay-minute').value)*60;}
+  function updateClock(){const value=Number($('replay-minute').value);$('replay-clock').textContent=String(Math.floor(value/60)).padStart(2,'0')+':'+String(value%60).padStart(2,'0');}
+  function setReplayEnd(){
+    stopReplay();const midnight=Date.parse($('replay-day').value+'T00:00:00-03:00')/1000;
+    const max=Math.max(0,Math.min(1439,Math.floor((Date.now()/1000-midnight)/60)));
+    $('replay-minute').max=max;$('replay-minute').value=max;updateClock();showReplay();
+  }
+  async function showReplay(){
+    if(!applied)return;const token=++replayToken;updateClock();$('replay-status').textContent='Buscando la lectura de ese momento…';
+    const query=new URLSearchParams(applied);query.set('at',selectedInstant());
+    try{const result=await api('/api/history-replay?'+query);if(token!==replayToken)return;replayLayer.clearLayers();
+      const status=result.status==='gap'?'Sin lectura reciente para este instante.':result.status==='failed'?'La última lectura falló; no se interpreta como cero reportes.':(result.status==='partial'?'Lectura parcial. ':'')+result.total+' reportes observados con estos filtros.';
+      $('replay-status').textContent=date(result.at)+' · '+status+(result.readingAt?' Última lectura: '+date(result.readingAt)+'.':'')+(result.truncated?' Se muestran los primeros 1000.':'');
+      for(const report of result.reports){const popup=el('div','',report.street||'Calle sin nombre');popup.append(el('p','history-help',labels[report.category]+' · Fiabilidad '+(report.reliability??'sin informar')));const b=el('button','','Ver historia del período');b.type='button';b.onclick=()=>{stopReplay();openDetail(report.id);};popup.append(b);L.circleMarker(report.point,{radius:7,color:'#13867e',fillOpacity:.6}).bindPopup(popup).addTo(replayLayer);}
+      if(playing){const next=Number($('replay-minute').value)+5;if(next>Number($('replay-minute').max))stopReplay();else replayTimer=setTimeout(()=>{$('replay-minute').value=next;showReplay();},1000);}
+    }catch(e){if(token===replayToken){stopReplay();replayLayer.clearLayers();$('replay-status').textContent=e.message;}}
+  }
+  $('replay-play').onclick=()=>{if(playing){stopReplay();return;}if(Number($('replay-minute').value)>=Number($('replay-minute').max))$('replay-minute').value=0;playing=true;$('replay-play').textContent='Pausar ❚❚';showReplay();};
+  $('replay-minute').oninput=()=>{stopReplay();updateClock();replayToken++;};
+  $('replay-minute').onchange=()=>showReplay();$('replay-day').onchange=()=>setReplayEnd();$('replay-now').onclick=()=>setReplayEnd();
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopReplay();});
+  $('zone-radius').oninput=drawZone;
+  $('zone-form').onsubmit=async event=>{event.preventDefault();if(!zoneCenter){$('zone-message').textContent='Primero tocá el mapa para elegir el centro.';return;}$('zone-save').disabled=true;try{const result=await postTools('/api/history-zones',{name:$('zone-name').value,lat:zoneCenter[0],lon:zoneCenter[1],radius:Number($('zone-radius').value)});toolState.zones=result.zones;zoneOptions(result.id);$('zone-message').textContent='Zona guardada y seleccionada.';await load();}catch(e){$('zone-message').textContent=e.message;}finally{$('zone-save').disabled=false;}};
+
   $('history-filters').onsubmit=e=>{e.preventDefault();load();};
   document.querySelectorAll('[data-days]').forEach(b=>b.onclick=()=>{preset(Number(b.dataset.days));load();});
   $('history-prev').onclick=()=>load(Math.max(0,offset-50),true);$('history-next').onclick=()=>load(offset+50,true);
   $('history-from').max=today();$('history-to').max=today();preset(7);
   const initial=new URLSearchParams(location.search);
   for(const [key,id] of [['from','history-from'],['to','history-to'],['type','history-type'],['street','history-street'],['reliability','history-reliability']])if(initial.has(key))$(id).value=initial.get(key);
-  load();
+  initializeTools();
 })();

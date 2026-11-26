@@ -46,18 +46,21 @@ def filters(query, timezone, now=None):
         offset = int(get('offset', '0'))
         after = int(get('after', '0'))
         minimum = int(get('reliability', '0'))
+        zone_id = int(get('zone', '0'))
+        at = float(get('at', str(now)))
     except (ValueError, OverflowError):
         raise ValueError('Fechas o filtros inválidos.') from None
     if not 0 <= (end_day-start_day).days < 93 or end_day > today:
         raise ValueError('Elegí hasta 93 días, sin fechas futuras.')
     kind, street = get('type'), get('street').strip()
-    if kind not in ('', *LABELS) or len(street) > 120 or not 0 <= minimum <= 10 or not 0 <= offset <= 1000000 or not 0 <= after <= 2**63-1:
+    if kind not in ('', *LABELS) or len(street) > 120 or not 0 <= minimum <= 10 or not 0 <= offset <= 1000000 or not 0 <= after <= 2**63-1 or not 0<=zone_id<=2**63-1 or not math.isfinite(at):
         raise ValueError('Filtros fuera de rango.')
     return {'from': start_day.isoformat(), 'to': end_day.isoformat(),
             'start': datetime.combine(start_day, daytime(), zone).timestamp(),
             'end': datetime.combine(end_day+timedelta(days=1), daytime(), zone).timestamp(),
             'type': kind, 'street': street, 'reliability': minimum, 'offset': offset, 'after': after,
-            'timezone': timezone, 'now': now, 'days': (end_day-start_day).days+1}
+            'timezone': timezone, 'now': now, 'days': (end_day-start_day).days+1,
+            'zoneId':zone_id,'zone':None,'at':at}
 
 
 SCOPED = '''WITH scoped AS (
@@ -84,11 +87,12 @@ def report_row(row):
 def matches(row, f):
     reliability = row.get('reliability')
     return ((not f['type'] or row['category'] == f['type'])
+            and (not f.get('zone') or distance(row['point'],[f['zone']['lat'],f['zone']['lon']])<=f['zone']['radius'])
             and normalized(f['street']) in normalized(row.get('street', ''))
             and (not f['reliability'] or reliability is not None and reliability >= f['reliability']))
 
 
-def dashboard(path, f):
+def dashboard(path, f, state_db=None):
     with closing(connect_readonly(path)) as db:
         deadline = time.monotonic()+12
         db.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
@@ -143,6 +147,9 @@ def dashboard(path, f):
         rows.sort(key=lambda r: (-r['periodLast'], r['id']))
         metadata['stale'] = not metadata['lastSuccess'] or f['now']-metadata['lastSuccess'] > 360
         analysis = analyze(db, rows, f, metadata)
+        if state_db is not None:
+            from history_tools import enrich
+            analysis.update(enrich(state_db,rows))
         for row in rows:
             row['spanSeconds'] = max(0, row['periodLast']-row['periodFirst'])
         return {'analysis': analysis, 'filters': {k: f[k] for k in ('from','to','type','street','reliability','timezone')},
@@ -161,6 +168,32 @@ def dashboard(path, f):
                              'beforeArchive': f['start'] < (metadata['startedAt'] or f['start']),
                              'firstReading': read_times[0] if read_times else None,
                              'lastReading': read_times[-1] if read_times else None}}
+
+
+def distance(a,b):
+    lat1,lat2=map(math.radians,(a[0],b[0]))
+    dlat=lat2-lat1;dlon=math.radians(b[1]-a[1])
+    h=math.sin(dlat/2)**2+math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
+    return 6371000*2*math.asin(min(1,math.sqrt(h)))
+
+
+def replay(path,f):
+    if not f['start']<=f['at']<f['end'] or f['at']>f['now']:
+        raise ValueError('Elegí un instante del período, sin horas futuras.')
+    with closing(connect_readonly(path)) as db:
+        deadline=time.monotonic()+12
+        db.set_progress_handler(lambda:int(time.monotonic()>deadline),10000)
+        db.execute('BEGIN')
+        rd=db.execute('SELECT id,attempted_at,status FROM readings WHERE attempted_at>=? AND attempted_at<=? ORDER BY attempted_at DESC,id DESC LIMIT 1',(f['start'],f['at'])).fetchone()
+        if not rd or f['at']-rd['attempted_at']>360:
+            return {'at':f['at'],'status':'gap','readingAt':rd['attempted_at'] if rd else None,'reports':[],'total':None,'truncated':False}
+        rows=[]
+        if rd['status']!='failed':
+            for hit in db.execute('SELECT v.body FROM sightings s JOIN versions v ON v.id=s.version_id WHERE s.reading_id=? ORDER BY s.report_id',(rd['id'],)):
+                body=json.loads(hit['body']);body['category']=category(body)
+                if matches(body,f):rows.append(body)
+        return {'at':f['at'],'status':rd['status'],'readingAt':rd['attempted_at'],'reports':rows[:1000],
+                'total':len(rows) if rd['status']!='failed' else None,'truncated':len(rows)>1000}
 
 
 def detail(path, uid, f):

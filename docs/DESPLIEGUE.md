@@ -93,3 +93,10 @@ El repositorio no contiene evidencias actuales de funcionamiento del servidor ni
 Imagen `waze-closures:20261126-history-analysis`. La inicialización agrega `history_notes` e índice a la base operativa existente; no cambia el esquema del recolector. Respaldar `state.sqlite3` con `manage.py backup` antes de actualizar. Los respaldos completos de la base operativa incluyen las notas; el respaldo de `history.sqlite3` conserva exclusivamente las observaciones. Para revertir la aplicación, volver a la imagen anterior `waze-closures:20261126-history-dashboard`; la tabla adicional es compatible y no se borra.
 
 Probar login, comparaciones, mapa, ficha y guardado de notas en una base de prueba antes de recrear el servicio. Nunca crear notas ficticias en producción para probar. La interfaz se consulta al abrir, cambiar filtros o pulsar Consultar; la recolección sigue siendo automática cada dos minutos.
+
+
+### Herramientas de investigación (26/11/2026)
+
+Imagen `waze-closures:20261126-history-research`, con nuevo módulo `history_tools.py`. Agrega `history_zones` y `history_links` a la base operativa, incluidas en su respaldo completo. Actualizar también `/opt/waze-monitor/monitoring.py` bajo `collector.lock`, preservando permisos. El esquema del archivo histórico no cambia; los nuevos campos se guardan dentro de versiones JSON desde la primera lectura con el recolector actualizado.
+
+Guardar respaldo de estado y fuentes antes de actualizar; conservar la imagen anterior `waze-closures:20261126-history-analysis`. Para revertir el recolector, restaurar la copia de `monitoring.py` bajo el mismo bloqueo. Las tablas agregadas son compatibles con la versión anterior y no se eliminan. No cargar zonas, relaciones ni revisiones ficticias en producción.

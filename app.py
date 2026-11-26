@@ -22,6 +22,7 @@ from agenda import materialize_map, preview as agenda_preview
 import accounts
 import monitoring
 import history_dashboard
+import history_tools
 
 ROOT = Path(__file__).resolve().parent
 
@@ -86,6 +87,7 @@ class App:
             accounts.initialize(db)
             monitoring.initialize(db)
             history_dashboard.initialize_notes(db)
+            history_tools.initialize(db)
             columns = {r['name'] for r in db.execute('PRAGMA table_info(sessions)')}
             if 'username' not in columns:
                 db.execute("ALTER TABLE sessions ADD COLUMN username TEXT NOT NULL DEFAULT ''")
@@ -231,15 +233,22 @@ class App:
                     return self.json({'status': 'ok'})
                 if route == '/feed.json':
                     return self.json(feed(self.scheduled_state(db)))
-                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
+                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history', '/api/history-tools', '/api/history-replay') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
                     session = self.session(environ, db)
                     if session is None:
                         raise HTTPError(401, 'Iniciá sesión como operador.')
-                    if route == '/api/history' or route.startswith('/api/history/'):
+                    if route == '/api/history-tools':
+                        return self.json({'zones':history_tools.zones(db),'canWrite':session['role']!='viewer','csrf':session['csrf']})
+                    if route in ('/api/history','/api/history-replay') or route.startswith('/api/history/'):
                         try:
                             f = history_dashboard.filters(environ.get('QUERY_STRING',''), CITY['timezone'])
+                            history_tools.resolve_zone(db,f)
+                            if route == '/api/history-replay':
+                                return self.json(history_dashboard.replay(self.history_path,f))
                             if route == '/api/history':
-                                return self.json(history_dashboard.dashboard(self.history_path, f))
+                                result=history_dashboard.dashboard(self.history_path,f,db)
+                                result['zone']=f['zone']
+                                return self.json(result)
                             key = route.removeprefix('/api/history/')
                             result = history_dashboard.detail(self.history_path, key, f)
                             if result is None:
@@ -289,7 +298,7 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         if method != 'POST':
             raise HTTPError(405, 'Método no permitido.')
-        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor', '/api/history-notes'):
+        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor', '/api/history-notes', '/api/history-zones', '/api/history-links'):
             raise HTTPError(404, 'No encontrado.')
         body = self.body(environ)
         with self.db() as db:
@@ -339,6 +348,13 @@ class App:
                 return self.json(result)
             if session['role'] == 'viewer':
                 raise HTTPError(403, 'Tu cuenta es de consulta: no puede modificar ni publicar cierres.')
+            if route in ('/api/history-zones','/api/history-links'):
+                try:
+                    return self.json(history_tools.save_zone(db,body,session['username']) if route.endswith('zones') else history_tools.save_link(db,self.history_path,body,session['username']))
+                except ValueError as error:
+                    raise HTTPError(409,str(error)) from None
+                except (sqlite3.Error,OSError):
+                    raise HTTPError(503,'No se pudo completar la operación. Actualizá la consulta para comprobar el resultado.') from None
             if route == '/api/history-notes':
                 try:
                     return self.json(history_dashboard.add_note(db, self.history_path, body, session['username']))

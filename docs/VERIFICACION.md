@@ -58,3 +58,8 @@ No se conectó esta copia al servidor existente ni a un feed privado Waze. No se
 Pruebas en `tests/test_history_dashboard.py`: comparación con versión correspondiente a cada período y corte horario equivalente, cobertura insuficiente, base cero con cobertura completa, UUID distintos frente a consultas repetidas, reportes-día por hora, permanencia y ausencia sin filtrar datos futuros, escritura de notas solo con sesión/CSRF/origen válidos, rechazo de lectores, validación y conflicto de revisiones. Se comprueba que un segundo seguimiento conserva el anterior y atribuye el autor desde la sesión.
 
 Verificación visual con copia del histórico y base operativa de prueba: gráficos, mapa y selección de zona, apertura de ficha, señales y guardado visible de nota con autor/fecha. Las notas de prueba no se suben a producción.
+
+
+### Reproducción, zonas y relaciones
+
+`tests/test_history_tools.py` cubre niveles válidos/desconocidos, origen municipal, versiones por instante sin datos futuros, lecturas parciales/fallidas y huecos, zonas y validación geográfica, filtros en históricos y reproducción, reglas de coincidencias, historial de decisiones y revisión optimista, denominadores de verificación y permisos/CSRF/origen. Prueba visual local con copia del archivo: reproducción a las 09:00, creación de zona circular y filtrado, vinculación de avisos, ficha con datos antiguos desconocidos y resumen actualizado al guardar una revisión. Los datos de prueba permanecen en la base local aislada.
