@@ -2,7 +2,7 @@ version: "3.7"
 services:
   waze:
     build: .
-    image: waze-closures:20261009-monitor
+    image: waze-closures:20261126-history-dashboard
     restart: unless-stopped
     # No TCP ports, bridge network, DNS or Internet at runtime.
     network_mode: none

@@ -21,6 +21,7 @@ from direct import perform
 from agenda import materialize_map, preview as agenda_preview
 import accounts
 import monitoring
+import history_dashboard
 
 ROOT = Path(__file__).resolve().parent
 
@@ -48,6 +49,7 @@ class App:
         self.secure = url.scheme == 'https'
         self.local_test = cfg.get('WAZE_LOCAL_TEST') == '1'
         self.monitor_path = cfg.get('WAZE_MONITOR_PATH', '/monitor/current.json')
+        self.history_path = cfg.get('WAZE_HISTORY_PATH', str(Path(self.monitor_path).with_name('history.sqlite3')))
         self.catalog = load_catalog(cfg.get('WAZE_CATALOG_PATH'))
         if url.query or url.fragment or not url.netloc or not re.fullmatch(r'/[A-Za-z0-9/_-]+', self.base):
             raise ValueError('WAZE_PUBLIC_URL must contain a valid base path, e.g. https://davidrosso.ar/waze')
@@ -192,8 +194,8 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         route = path[len(self.base):]
         if method in ('GET', 'HEAD'):
-            if route in ('/', '/login', '/legacy'):
-                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html'}[route]
+            if route in ('/', '/login', '/legacy', '/history'):
+                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html', '/history': 'history.html'}[route]
                 html = (ROOT / 'templates' / name).read_text(encoding='utf-8').replace('{{BASE}}', self.base)
                 html = html.replace('{{ENV_NOTICE}}', '<div class="test-banner">ENTORNO DE PRUEBAS LOCAL · No publica cierres reales.</div>' if self.local_test else '')
                 return 200, html.encode(), 'text/html; charset=utf-8', []
@@ -203,6 +205,8 @@ class App:
                       '/assets/users.js': ('users.js', 'text/javascript'),
                       '/assets/monitor.js': ('monitor.js', 'text/javascript'),
                       '/assets/monitor.css': ('monitor.css', 'text/css'),
+                      '/assets/history.js': ('history.js', 'text/javascript'),
+                      '/assets/history.css': ('history.css', 'text/css'),
                       '/assets/publication.js': ('publication.js', 'text/javascript'),
                       '/assets/agenda.js': ('agenda.js', 'text/javascript'),
                       '/assets/operations.js': ('operations.js', 'text/javascript'),
@@ -226,10 +230,25 @@ class App:
                     return self.json({'status': 'ok'})
                 if route == '/feed.json':
                     return self.json(feed(self.scheduled_state(db)))
-                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/')):
+                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
                     session = self.session(environ, db)
                     if session is None:
                         raise HTTPError(401, 'Iniciá sesión como operador.')
+                    if route == '/api/history' or route.startswith('/api/history/'):
+                        try:
+                            f = history_dashboard.filters(environ.get('QUERY_STRING',''), CITY['timezone'])
+                            if route == '/api/history':
+                                return self.json(history_dashboard.dashboard(self.history_path, f))
+                            key = route.removeprefix('/api/history/')
+                            result = history_dashboard.detail(self.history_path, key, f)
+                            if result is None:
+                                raise HTTPError(404, 'No hay observaciones de ese reporte en el período.')
+                            result['municipalHistory'] = monitoring.history(db, key)
+                            return self.json(result)
+                        except ValueError as error:
+                            raise HTTPError(400, str(error)) from None
+                        except (sqlite3.Error, OSError):
+                            raise HTTPError(503, 'El archivo histórico no está disponible. Probá nuevamente o elegí un período más corto.') from None
                     if route == '/api/monitor':
                         return self.json(monitoring.listing(db, monitoring.read_cache(self.monitor_path)))
                     if route.startswith('/api/monitor/'):

@@ -42,7 +42,24 @@ No hay borrado automático del histórico. La retención de 30 días y el límit
 
 La escritura es transaccional y se confirma antes de actualizar la caché. Si falla la base, la caché conserva sus datos anteriores y publica `meta.error=archive_failed`; la ejecución devuelve un código no cero. Si falla la caché después de confirmar la base, lo archivado no se pierde. No recrear ni borrar la base ante una falla; diagnosticar permisos, disco y respaldos.
 
-El endpoint autenticado existente `GET /waze/api/monitor` devuelve en `meta.archive` inicio del archivo, última lectura archivada correcta, estado y cantidades de reportes/consultas. La interfaz de análisis por fechas y el cruce con cámaras son etapas posteriores.
+El endpoint autenticado existente `GET /waze/api/monitor` devuelve en `meta.archive` inicio del archivo, última lectura archivada correcta, estado y cantidades de reportes/consultas. El panel de análisis está en `/waze/history`; el cruce con cámaras corresponde a una etapa posterior.
+
+### Panel de históricos y estadísticas
+
+Desde el menú de Vía, abrir **Históricos y estadísticas**, o entrar a `/waze/history`. Usa la sesión existente y admite cuentas de administración, operación y consulta. La página pública solo contiene la estructura; los datos requieren autenticación.
+
+`WAZE_HISTORY_PATH` permite especificar la base. Por defecto se usa `history.sqlite3` junto a `WAZE_MONITOR_PATH`, disponible en el montaje de solo lectura `/monitor`. El panel no crea ni modifica el archivo. Si falta o no se puede consultar, devuelve un error explícito, no estadísticas vacías.
+
+Los filtros admiten hasta 93 días, tipo, búsqueda de calle sin distinción de acentos y fiabilidad mínima. Las fechas son inclusivas en la zona horaria de la ciudad; la consulta interna usa inicio inclusivo y fin exclusivo. La tabla pagina de a 50 reportes. Se usa la última versión observada **dentro del período** para tipo, calle, ubicación y fiabilidad, sin aplicar cambios posteriores a un análisis anterior.
+
+- Reportes distintos: UUID observados en el período, no cantidad de lecturas ni de personas.
+- Publicados: entre esos reportes observados y filtrados, los cuya fecha de publicación informada cae en el período. Puede preceder al inicio del archivo; no reconstruye lecturas anteriores.
+- Evolución: UUID distintos por día; al consultar un solo día, por hora. Un reporte puede estar en varios intervalos. No sumar esas barras para obtener el total.
+- Fiabilidad: promedio y distribución de un valor por reporte (última observación del período). Los valores no informados se excluyen del promedio y se muestran aparte.
+- Cobertura: lecturas y fallas de todo el recolector, sin filtros de calle/tipo; las franjas sin lecturas correctas y los huecos mayores de seis minutos se señalan explícitamente.
+- Ficha: mapa, fechas, confianza, confirmaciones, cambios de Waze durante el período y últimas 30 acciones municipales con usuario. No se infiere identidad del wazer ni resolución de un incidente.
+
+Las consultas usan una transacción de lectura coherente, límites de período y tiempo de ejecución. Si el archivo crece y un rango excede el tiempo permitido, acotar las fechas. La primera importación se conserva en la base pero solo entra en las estadísticas del período si hay una observación detallada del reporte en ese período.
 
 Ejecutar como `waze-monitor` (o una cuenta con lectura autorizada):
 

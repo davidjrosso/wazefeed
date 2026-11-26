@@ -43,6 +43,9 @@ Todos los ejemplos usan el prefijo `/waze`. Las rutas públicas no requieren ses
 | `GET, POST /waze/api/users` | Gestión de usuarios para administración |
 | `GET, POST /waze/api/monitor` | Consulta y seguimiento municipal de alertas |
 | `GET /waze/api/monitor/{id}` | Historial de una alerta |
+| `GET /waze/history` | Panel de históricos y estadísticas (datos sujetos a sesión) |
+| `GET /waze/api/history` | Resumen, gráficos y tabla paginada del archivo de solo lectura |
+| `GET /waze/api/history/{id}` | Versión del período, cambios de Waze y últimas acciones municipales |
 
 Las mutaciones autenticadas requieren cookie de sesión y `X-CSRF-Token`, además de las verificaciones de origen. La gestión de cuentas pide confirmar la contraseña del administrador. Las pruebas y el cliente son la referencia de los cuerpos JSON; no se ofrece aún un contrato OpenAPI versionado.
 

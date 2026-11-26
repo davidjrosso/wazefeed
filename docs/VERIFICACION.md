@@ -1,5 +1,16 @@
 # Verificación de la entrega
 
+## Panel de históricos — 26 de noviembre de 2026
+
+- Suite completa: 205 pruebas Python, 204 aprobadas y una omitida por requerir Gunicorn/socket Unix en Linux. Después de las últimas mejoras, suite específica de históricos: 13 aprobadas, incluidas paginación y fiabilidad desconocida/decimal.
+- JavaScript: sintaxis validada y siete pruebas existentes de publicación aprobadas. IDs del HTML comprobados sin duplicaciones.
+- Verificación visual local con copia del archivo real: acceso desde el menú, gráficos, filtro Hoy, filtro de fiabilidad, ficha con mapa y cronología, búsqueda sin resultados y ausencia de errores de consola.
+- Imagen de producción probada antes del reemplazo con base de usuarios temporal y archivo real montado en solo lectura: autenticación, rechazo sin sesión, resumen, ficha y recursos estáticos correctos.
+- Publicado en `https://davidrosso.ar/waze/history`. Comprobados página HTTP 200, API anónima HTTP 401 y salud HTTP 200. La consulta del día devolvió 22 reportes distintos, dos publicados ese día y fiabilidad promedio 5,3. El recolector continuó registrando lecturas.
+- Respaldo consistente del estado de Vía antes del despliegue y copia de los archivos anteriores en `/opt/waze-closures/deploy-backups/history-dashboard-20261126T130216Z`. Imagen anterior conservada para reversión.
+
+La prueba visual usó una copia local, por lo que el indicador de fuente desactualizada allí era esperado. Las comprobaciones del servidor usaron la base activa; no se publicaron cierres ni se alteraron reportes para probar los gráficos.
+
 ## Archivo histórico de alertas — 26 de noviembre de 2026
 
 - Suite completa Python: 192 pruebas, 191 aprobadas y una omitida (integración Gunicorn/socket Unix en Windows). Incluye 14 nuevas pruebas del archivo histórico.
