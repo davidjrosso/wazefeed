@@ -86,3 +86,10 @@ Para restaurar, detener escritores, conservar la base actual, verificar el respa
 ## Validación externa
 
 El repositorio no contiene evidencias actuales de funcionamiento del servidor ni acceso a sus respaldos. Las pruebas de esta entrega son locales. La aprobación del feed, su lectura por Waze, las condiciones de servicio y la capacidad de la instalación deben verificarse por separado.
+
+
+### Ampliación de análisis (26/11/2026)
+
+Imagen `waze-closures:20261126-history-analysis`. La inicialización agrega `history_notes` e índice a la base operativa existente; no cambia el esquema del recolector. Respaldar `state.sqlite3` con `manage.py backup` antes de actualizar. Los respaldos completos de la base operativa incluyen las notas; el respaldo de `history.sqlite3` conserva exclusivamente las observaciones. Para revertir la aplicación, volver a la imagen anterior `waze-closures:20261126-history-dashboard`; la tabla adicional es compatible y no se borra.
+
+Probar login, comparaciones, mapa, ficha y guardado de notas en una base de prueba antes de recrear el servicio. Nunca crear notas ficticias en producción para probar. La interfaz se consulta al abrir, cambiar filtros o pulsar Consultar; la recolección sigue siendo automática cada dos minutos.

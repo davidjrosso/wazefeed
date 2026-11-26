@@ -51,3 +51,10 @@ La primera ejecución detectó ausencia de datos de zona horaria en Windows. Se 
 La revisión previa a publicación incluyó búsqueda de patrones de credenciales, claves privadas, direcciones internas y artefactos de producción en los archivos seleccionados. No es una certificación de ausencia de vulnerabilidades.
 
 No se conectó esta copia al servidor existente ni a un feed privado Waze. No se publicaron cierres de prueba en producción. La disponibilidad del sitio y la aceptación del feed por Waze no forman parte de estos resultados.
+
+
+### Análisis del histórico y notas
+
+Pruebas en `tests/test_history_dashboard.py`: comparación con versión correspondiente a cada período y corte horario equivalente, cobertura insuficiente, base cero con cobertura completa, UUID distintos frente a consultas repetidas, reportes-día por hora, permanencia y ausencia sin filtrar datos futuros, escritura de notas solo con sesión/CSRF/origen válidos, rechazo de lectores, validación y conflicto de revisiones. Se comprueba que un segundo seguimiento conserva el anterior y atribuye el autor desde la sesión.
+
+Verificación visual con copia del histórico y base operativa de prueba: gráficos, mapa y selección de zona, apertura de ficha, señales y guardado visible de nota con autor/fecha. Las notas de prueba no se suben a producción.

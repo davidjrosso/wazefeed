@@ -85,6 +85,7 @@ class App:
             db.execute('BEGIN IMMEDIATE')
             accounts.initialize(db)
             monitoring.initialize(db)
+            history_dashboard.initialize_notes(db)
             columns = {r['name'] for r in db.execute('PRAGMA table_info(sessions)')}
             if 'username' not in columns:
                 db.execute("ALTER TABLE sessions ADD COLUMN username TEXT NOT NULL DEFAULT ''")
@@ -244,6 +245,9 @@ class App:
                             if result is None:
                                 raise HTTPError(404, 'No hay observaciones de ese reporte en el período.')
                             result['municipalHistory'] = monitoring.history(db, key)
+                            result['research'] = history_dashboard.notes(db, key)
+                            result['canWrite'] = session['role'] != 'viewer'
+                            result['csrf'] = session['csrf']
                             return self.json(result)
                         except ValueError as error:
                             raise HTTPError(400, str(error)) from None
@@ -285,7 +289,7 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         if method != 'POST':
             raise HTTPError(405, 'Método no permitido.')
-        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor'):
+        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor', '/api/history-notes'):
             raise HTTPError(404, 'No encontrado.')
         body = self.body(environ)
         with self.db() as db:
@@ -335,6 +339,13 @@ class App:
                 return self.json(result)
             if session['role'] == 'viewer':
                 raise HTTPError(403, 'Tu cuenta es de consulta: no puede modificar ni publicar cierres.')
+            if route == '/api/history-notes':
+                try:
+                    return self.json(history_dashboard.add_note(db, self.history_path, body, session['username']))
+                except ValueError as error:
+                    raise HTTPError(409, str(error)) from None
+                except (sqlite3.Error, OSError):
+                    raise HTTPError(503, 'No se pudo guardar el seguimiento. Reabrí la ficha para comprobar el resultado antes de reintentar.') from None
             if route == '/api/monitor':
                 cache=monitoring.read_cache(self.monitor_path)
                 try:

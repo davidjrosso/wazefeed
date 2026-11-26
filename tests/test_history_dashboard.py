@@ -122,6 +122,51 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(result['metrics']['firstDetected'],0)
         self.assertTrue(result['reports'][0]['imported'])
 
+    def test_comparison_requires_coverage_and_uses_previous_asof_values(self):
+        f=filters('from=2026-11-27&to=2026-11-27&reliability=9',ZONE,START+86400+10800)
+        a=dashboard(self.db,f)['analysis']
+        self.assertEqual(a['comparison']['current'],1)
+        self.assertEqual(a['comparison']['previous'],1) # two, not tomorrow's version of one
+        self.assertFalse(a['comparison']['comparable'])
+        self.assertIsNone(a['comparison']['changePercent'])
+        self.assertEqual(a['comparison']['previousEnd'],START+10800)
+        self.assertTrue(a['days'][0]['inProgress'])
+
+    def test_recurrence_and_hour_counts_do_not_count_poll_repeats(self):
+        a=dashboard(self.db,self.f())['analysis']
+        self.assertEqual(sum(c['reports'] for c in a['locations']),2)
+        self.assertEqual(a['hours'][2]['count'],2)
+        self.assertEqual(a['hours'][3]['count'],1)
+        self.assertEqual(a['days'][0]['observed'],2)
+        self.assertEqual(a['days'][0]['published'],1)
+        self.assertEqual(a['duration']['medianSeconds'],1860)
+        f=filters('from=2026-11-26&to=2026-11-27',ZONE,START+3*86400)
+        a=dashboard(self.db,f)['analysis']
+        self.assertEqual(a['hours'][2]['count'],3) # same UUID on another day is a report-day
+        self.assertEqual(max(c['days'] for c in a['locations']),2)
+        self.assertEqual(sum(c['reports'] for c in a['locations']),2)
+
+    def test_signal_history_and_absence_do_not_leak_future(self):
+        one=detail(self.db,'one',self.f())['evolution']
+        self.assertEqual([p['reliability'] for p in one['points']],[5,7])
+        self.assertEqual(one['points'][0]['until'],START+7320)
+        self.assertEqual(one['spanSeconds'],3600)
+        self.assertEqual(one['gaps'],1)
+        self.assertEqual(one['lastState']['kind'],'changed')
+        two=detail(self.db,'two',self.f())['evolution']
+        self.assertEqual(two['lastState']['kind'],'absent')
+        self.assertEqual(two['lastState']['at'],START+10800)
+
+    def test_comparable_windows_and_zero_baseline(self):
+        root=self.root/'continuous';root.mkdir();cache=root/'current.json'
+        for i in range(0,2*86400+601,120):
+            collect(self.secret,cache,CITY,START+i,lambda _,i=i:{'alerts':[] if i<86400 else [self.a], 'endTimeMillis':(START+i)*1000})
+        f=filters('from=2026-11-27&to=2026-11-27',ZONE,START+2*86400+600)
+        a=dashboard(root/'history.sqlite3',f)['analysis']['comparison']
+        self.assertTrue(a['comparable'])
+        self.assertEqual((a['current'],a['previous']),(1,0))
+        self.assertIsNone(a['changePercent'])
+
 
 class DashboardAPITests(unittest.TestCase):
     request=test_app.ServiceTests.request
@@ -152,3 +197,43 @@ class DashboardAPITests(unittest.TestCase):
         h={'HTTP_COOKIE':r['headers']['Set-Cookie'].split(';')[0]}
         self.assertEqual(self.request('/waze/api/history',headers=h)['status'],503) # Authorized, missing file.
         self.assertEqual(self.request('/waze/api/history','POST',{},h)['status'],404)
+
+    def archive(self):
+        root=Path(self.tmp.name);secret=root/'feed.url';secret.write_text(URL)
+        collect(secret,root/'current.json',CITY,START+7200,lambda _:{'alerts':[alert('archived',pubMillis=START*1000)],'endTimeMillis':(START+7200)*1000})
+        self.app.history_path=str(root/'history.sqlite3')
+
+    def test_research_auth_csrf_validation_and_append_only(self):
+        self.archive();h,_=self.login()
+        body={'id':'archived','revision':0,'status':'investigating','note':'Revisé el lugar <script>sin ejecutar</script>'}
+        path='/waze/api/history-notes'
+        self.assertEqual(self.request(path,'POST',body)['status'],401)
+        self.assertEqual(self.request(path,'POST',body,{'HTTP_COOKIE':h['HTTP_COOKIE']})['status'],403)
+        self.assertEqual(self.request(path,'POST',body,{**h,'HTTP_ORIGIN':'https://evil.test'})['status'],403)
+        first=self.request(path,'POST',body,h)
+        self.assertEqual(first['status'],200)
+        self.assertEqual(first['json']['entries'][0]['actor'],'operador')
+        self.assertEqual(self.request(path,'POST',body,h)['status'],409) # stale or duplicate submit
+        revised={**body,'revision':first['json']['revision'],'status':'unverified','note':'No se pudo comprobar'}
+        second=self.request(path,'POST',revised,h)
+        self.assertEqual(len(second['json']['entries']),2)
+        self.assertEqual(second['json']['entries'][1]['note'],body['note'])
+        for invalid in ({'note':''},{'note':'x'*2001},{'status':'resolved'},{'id':'unknown'},{'revision':True}):
+            self.assertEqual(self.request(path,'POST',{**revised,**invalid},h)['status'],409)
+        query={'QUERY_STRING':'from=2026-11-26&to=2026-11-26',**h}
+        result=self.request('/waze/api/history/archived',headers=query)
+        self.assertEqual(result['status'],200)
+        self.assertEqual(result['json']['research']['entries'][0]['status'],'unverified')
+        self.assertTrue(result['json']['canWrite'])
+        self.assertEqual(result['json']['csrf'],h['HTTP_X_CSRF_TOKEN'])
+
+    def test_viewer_cannot_add_research_notes(self):
+        self.archive()
+        with self.app.db() as db:db.execute('INSERT INTO accounts VALUES(?,?,?,1)',('reader',test_app.HASH,'viewer'))
+        r=self.request('/waze/api/login','POST',{'username':'reader','password':test_app.PASSWORD})
+        h={'HTTP_COOKIE':r['headers']['Set-Cookie'].split(';')[0]}
+        state=self.request('/waze/api/state',headers=h)['json'];h['HTTP_X_CSRF_TOKEN']=state['csrf']
+        self.assertEqual(self.request('/waze/api/history-notes','POST',{'id':'archived','revision':0,'status':'pending','note':'No permitido'},h)['status'],403)
+        result=self.request('/waze/api/history/archived',headers={**h,'QUERY_STRING':'from=2026-11-26&to=2026-11-26'})
+        self.assertFalse(result['json']['canWrite'])
+        self.assertEqual(result['json']['research']['entries'],[])
