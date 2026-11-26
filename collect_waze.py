@@ -9,6 +9,7 @@ import time
 import urllib.request
 from urllib.parse import urlsplit
 from monitoring import read_cache, merge
+from observation_store import record
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -45,16 +46,33 @@ def atomic(path,data):
         if os.path.exists(name):os.unlink(name)
 
 
-def collect(secret,output,city,now=None,fetcher=fetch):
+def collect(secret,output,city,now=None,fetcher=fetch,history=None):
     now=time.time() if now is None else now
     previous=read_cache(output)
+    history=Path(history) if history else Path(output).with_name('history.sqlite3')
+    if history.resolve() in (Path(output).resolve(),Path(secret).resolve()):
+        raise ValueError('History must be separate from cache and credentials')
+    payload=None
+    error=None
     try:
         url=validate_url(Path(secret).read_text(encoding='utf-8').strip())
-        result=merge(previous,fetcher(url),city['bounds'],now)
+        payload=fetcher(url)
+        result=merge(previous,payload,city['bounds'],now)
         ok=True
     except Exception:
         # Neither exceptions nor URLs go to logs/cache: the URL carries a token.
         result={**previous,'meta':{**previous['meta'],'lastAttempt':now,'error':'fetch_failed'}}
+        error='fetch_failed'
+        ok=False
+    try:
+        archived,accepted=record(history,previous,payload,city['bounds'],now,error)
+        if ok and not accepted:
+            result={**previous,'meta':{**previous['meta'],'lastAttempt':now,'error':'invalid_feed'}}
+            ok=False
+        result['meta']['archive']=archived
+    except Exception:
+        # Never claim success if the historical transaction did not commit.
+        result={**previous,'meta':{**previous['meta'],'lastAttempt':now,'error':'archive_failed'}}
         ok=False
     atomic(Path(output),result)
     return ok
@@ -65,10 +83,11 @@ def main():
     parser.add_argument('--secret',default='/etc/waze-monitor/feed.url')
     parser.add_argument('--output',default='/var/lib/waze-monitor/current.json')
     parser.add_argument('--city',default='/opt/waze-monitor/city.json')
+    parser.add_argument('--history',help='SQLite histórico; por defecto history.sqlite3 junto a --output')
     args=parser.parse_args()
     city=json.loads(Path(args.city).read_text(encoding='utf-8'))
-    ok=collect(args.secret,args.output,city)
-    print('Waze observations refreshed' if ok else 'Waze unavailable; last observations preserved')
+    ok=collect(args.secret,args.output,city,history=args.history)
+    print('Waze observations archived' if ok else 'Collection failed; last observations preserved (check cache status)')
     raise SystemExit(0 if ok else 1)
 
 

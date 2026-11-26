@@ -10,6 +10,7 @@ Panel web para gestionar cierres de calles y consultar alertas de tránsito en R
 - Reabrir calles, guardar plantillas y configurar una agenda de cierres.
 - Administrar cuentas con roles de administración, operación y consulta.
 - Consultar alertas Waze y registrar su seguimiento municipal con historial.
+- Archivar cada consulta de alertas en una base SQLite independiente, con versiones y reapariciones, mediante el recolector programado cada dos minutos.
 - Mantener estado persistente en SQLite, control de versiones e idempotencia de solicitudes.
 
 **Publicar en el panel significa actualizar el feed de esta aplicación.** La incorporación efectiva de un cierre en Waze depende de la integración y validación del proveedor. El repositorio no acredita una aprobación de Waze ni permite modificar sus alertas de origen.
@@ -41,7 +42,7 @@ Seguí los comandos de [instalación para Windows o Linux](docs/INSTALACION.md) 
 | `app.py`, `wsgi.py` | Aplicación WSGI, rutas HTTP, sesiones y persistencia |
 | `core.py`, `operations.py`, `direct.py`, `agenda.py` | Cierres, operaciones, plantillas y calendario |
 | `accounts.py` | Cuentas, permisos y auditoría |
-| `monitoring.py`, `collect_waze.py` | Seguimiento de alertas y recolector independiente |
+| `monitoring.py`, `collect_waze.py`, `observation_store.py` | Seguimiento de alertas, recolector independiente y archivo histórico |
 | `catalog.py`, `config/`, `tools/` | Catálogo de calles y herramientas geográficas |
 | `templates/`, `static/` | Interfaz HTML/CSS/JavaScript y Leaflet |
 | `tests/` | Pruebas Python y JavaScript con datos aislados |
