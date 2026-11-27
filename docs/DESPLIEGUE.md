@@ -100,3 +100,7 @@ Probar login, comparaciones, mapa, ficha y guardado de notas en una base de prue
 Imagen `waze-closures:20261126-history-research`, con nuevo módulo `history_tools.py`. Agrega `history_zones` y `history_links` a la base operativa, incluidas en su respaldo completo. Actualizar también `/opt/waze-monitor/monitoring.py` bajo `collector.lock`, preservando permisos. El esquema del archivo histórico no cambia; los nuevos campos se guardan dentro de versiones JSON desde la primera lectura con el recolector actualizado.
 
 Guardar respaldo de estado y fuentes antes de actualizar; conservar la imagen anterior `waze-closures:20261126-history-analysis`. Para revertir el recolector, restaurar la copia de `monitoring.py` bajo el mismo bloqueo. Las tablas agregadas son compatibles con la versión anterior y no se eliminan. No cargar zonas, relaciones ni revisiones ficticias en producción.
+
+## Captura de velocidades
+
+La imagen vigente es `waze-closures:20261127-traffic`. El recolector Traffic View funciona con su propia base, credencial, bloqueo y respaldo; ver [RECORRIDOS.md](RECORRIDOS.md).

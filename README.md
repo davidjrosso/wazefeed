@@ -69,3 +69,7 @@ La integración de Gunicorn sobre socket Unix se omite cuando el entorno no es c
 Se publica una copia independiente del código, sin historial del espacio de trabajo, bases de producción, usuarios, sesiones, logs, credenciales ni URL privada del feed Waze. Se excluyen scripts de migración y diagnósticos propios de la infraestructura original.
 
 El código propio no tiene una licencia abierta concedida en esta entrega; cualquier autorización de uso o explotación debe acordarse con su titular. Las dependencias y los datos conservan sus licencias: ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Waze es una marca de su titular; este proyecto no se presenta como producto oficial de Waze.
+
+## Velocidades y recorridos
+
+Vista `/traffic`: velocidad media estimada por recorrido, tiempos de viaje, comparación con lo habitual, mapa e historial por versión. Las altas y bajas en Traffic View se reflejan automáticamente sin borrar el histórico. [Datos, límites y operación](docs/RECORRIDOS.md).

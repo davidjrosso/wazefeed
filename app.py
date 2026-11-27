@@ -23,6 +23,7 @@ import accounts
 import monitoring
 import history_dashboard
 import history_tools
+import traffic_store
 
 ROOT = Path(__file__).resolve().parent
 
@@ -51,6 +52,7 @@ class App:
         self.local_test = cfg.get('WAZE_LOCAL_TEST') == '1'
         self.monitor_path = cfg.get('WAZE_MONITOR_PATH', '/monitor/current.json')
         self.history_path = cfg.get('WAZE_HISTORY_PATH', str(Path(self.monitor_path).with_name('history.sqlite3')))
+        self.traffic_path = cfg.get('WAZE_TRAFFIC_PATH', str(Path(self.monitor_path).with_name('traffic.sqlite3')))
         self.catalog = load_catalog(cfg.get('WAZE_CATALOG_PATH'))
         if url.query or url.fragment or not url.netloc or not re.fullmatch(r'/[A-Za-z0-9/_-]+', self.base):
             raise ValueError('WAZE_PUBLIC_URL must contain a valid base path, e.g. https://davidrosso.ar/waze')
@@ -197,8 +199,8 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         route = path[len(self.base):]
         if method in ('GET', 'HEAD'):
-            if route in ('/', '/login', '/legacy', '/history'):
-                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html', '/history': 'history.html'}[route]
+            if route in ('/', '/login', '/legacy', '/history', '/traffic'):
+                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html', '/history': 'history.html', '/traffic':'traffic.html'}[route]
                 html = (ROOT / 'templates' / name).read_text(encoding='utf-8').replace('{{BASE}}', self.base)
                 html = html.replace('{{ENV_NOTICE}}', '<div class="test-banner">ENTORNO DE PRUEBAS LOCAL · No publica cierres reales.</div>' if self.local_test else '')
                 return 200, html.encode(), 'text/html; charset=utf-8', []
@@ -210,6 +212,8 @@ class App:
                       '/assets/monitor.css': ('monitor.css', 'text/css'),
                       '/assets/history.js': ('history.js', 'text/javascript'),
                       '/assets/history.css': ('history.css', 'text/css'),
+                      '/assets/traffic.js': ('traffic.js', 'text/javascript'),
+                      '/assets/traffic.css': ('traffic.css', 'text/css'),
                       '/assets/publication.js': ('publication.js', 'text/javascript'),
                       '/assets/agenda.js': ('agenda.js', 'text/javascript'),
                       '/assets/operations.js': ('operations.js', 'text/javascript'),
@@ -233,10 +237,21 @@ class App:
                     return self.json({'status': 'ok'})
                 if route == '/feed.json':
                     return self.json(feed(self.scheduled_state(db)))
-                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history', '/api/history-tools', '/api/history-replay') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
+                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history', '/api/history-tools', '/api/history-replay', '/api/traffic') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
                     session = self.session(environ, db)
                     if session is None:
                         raise HTTPError(401, 'Iniciá sesión como operador.')
+                    if route == '/api/traffic':
+                        try:
+                            from urllib.parse import parse_qs
+                            query = environ.get('QUERY_STRING','')
+                            f = history_dashboard.filters(query,CITY['timezone'])
+                            key = parse_qs(query).get('route',[''])[0]
+                            return self.json(traffic_store.dashboard(self.traffic_path,f,key))
+                        except ValueError as error:
+                            raise HTTPError(400,str(error)) from None
+                        except (sqlite3.Error,OSError):
+                            raise HTTPError(503,'El archivo de recorridos no está disponible. Probá nuevamente o elegí un período más corto.') from None
                     if route == '/api/history-tools':
                         return self.json({'zones':history_tools.zones(db),'canWrite':session['role']!='viewer','csrf':session['csrf']})
                     if route in ('/api/history','/api/history-replay') or route.startswith('/api/history/'):
