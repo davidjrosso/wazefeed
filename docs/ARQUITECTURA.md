@@ -43,6 +43,9 @@ Todos los ejemplos usan el prefijo `/waze`. Las rutas públicas no requieren ses
 | `GET, POST /waze/api/users` | Gestión de usuarios para administración |
 | `GET, POST /waze/api/monitor` | Consulta y seguimiento municipal de alertas |
 | `GET /waze/api/monitor/{id}` | Historial de una alerta |
+| `GET /waze/history` | Panel de históricos y estadísticas (datos sujetos a sesión) |
+| `GET /waze/api/history` | Resumen, gráficos y tabla paginada del archivo de solo lectura |
+| `GET /waze/api/history/{id}` | Versión del período, cambios de Waze y últimas acciones municipales |
 
 Las mutaciones autenticadas requieren cookie de sesión y `X-CSRF-Token`, además de las verificaciones de origen. La gestión de cuentas pide confirmar la contraseña del administrador. Las pruebas y el cliente son la referencia de los cuerpos JSON; no se ofrece aún un contrato OpenAPI versionado.
 
@@ -55,3 +58,23 @@ Las mutaciones autenticadas requieren cookie de sesión y `X-CSRF-Token`, ademá
 ## Adaptación a otro municipio
 
 Revisar `config/city.json`, catálogo, geometrías, zona horaria y atribuciones. No basta con cambiar el título: es necesario validar sentidos, tramos, área operativa y correspondencia con Waze. La arquitectura actual es de una instancia por configuración municipal.
+
+
+### Análisis y seguimiento de históricos
+
+`history_dashboard.py` consulta el archivo con una transacción consistente y límite de consulta. La comparación usa una ventana anterior desplazada por el número de días elegidos, con la misma duración transcurrida si incluye hoy. Los filtros usan la última versión observada dentro de cada ventana, independientemente. Solo se calcula variación porcentual con cobertura de ambas ventanas, sin huecos superiores a seis minutos ni lecturas parciales; una base cero no produce porcentaje.
+
+El mapa agrupa UUID distintos en celdas aproximadas de 100 × 100 m usando una proyección local para Río Tercero. No agrupa incidentes ni demuestra recurrencia del mismo problema. Muestra hasta 100 zonas y 50 enlaces de reportes por zona. La presencia por hora suma pares (día, UUID); varias consultas en la misma hora no aumentan el contador. Las franjas sin lecturas correctas no se presentan como cero.
+
+Permanencia significa lapso entre primera y última observación del período, no duración del incidente. Las señales se agrupan por versiones consecutivas (hasta 500 visibles) y las ausencias nunca se presentan como resolución. `history_notes` vive en la base operativa `state.sqlite3`, separada del archivo de solo lectura. Son entradas inmutables con autor autenticado, fecha, estado y fundamento (2000 caracteres). El formulario muestra las últimas 100; no elimina anteriores. Los operadores y administradores pueden agregar, los lectores solo consultar. Revisión optimista, CSRF y control de origen impiden sobrescrituras y envíos no autorizados. Esta investigación es independiente de los estados operativos de Monitoreo.
+
+
+### Herramientas de investigación con datos disponibles
+
+`monitoring.normalize` conserva `reportRating` (entero 0–6; 0 se presenta sin nivel), `roadType` y `municipalSource` (verdadero/falso/desconocido). No se rellenan retrospectivamente versiones anteriores ni se identifica al reportante. La marca `municipal` anterior sigue disponible para compatibilidad.
+
+`history_tools.py` mantiene zonas circulares compartidas (centro dentro del área urbana, radio de 100–3000 m, máximo 100 nombres únicos) y un historial inmutable de revisiones entre pares. Sugiere pares del mismo tipo/subtipo, a no más de 75 m, con publicaciones separadas hasta 24 h (1 h en accidentes) y lapsos de observación superpuestos. Usa índice espacial y muestra hasta 200 pares, priorizando decisiones guardadas. Vincular/separar/dejar pendiente registra actor y fecha, exige revisión vigente y no fusiona UUID ni altera los conteos. No prueba que sean un mismo incidente.
+
+La reproducción selecciona la última lectura dentro del período, anterior o igual al instante elegido; nunca usa versiones futuras ni extrapola más de 6 minutos. Lecturas fallidas y huecos devuelven total desconocido; lecturas parciales se identifican. Hasta 1000 puntos por lectura, con indicador de truncamiento. Las zonas filtran las observaciones de cada lectura y los agregados (en estos últimos se usa la última ubicación del período, igual que los demás filtros).
+
+Las verificaciones agregan el estado actual de las notas de investigación de cada reporte del período, una sola vez. El denominador de revisados es confirmado + no comprobado + descartado; pendiente/en investigación/sin notas no cuentan como revisión final. El porcentaje es de la muestra revisada, no precisión general de Waze. Se desglosa por tipo y fiabilidad observada en el período. Los lectores solo consultan; las escrituras requieren operador/admin, CSRF y origen válido.

@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Daily at 03:17 server time. Keeps seven compressed copies, never deletes history.
+17 3 * * * waze-monitor umask 077; /usr/bin/flock -n /var/lib/waze-monitor/backup.lock /usr/bin/timeout 300 /usr/bin/python3 /opt/waze-monitor/backup_observations.py >/dev/null 2>&1

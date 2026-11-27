@@ -10,6 +10,10 @@ Panel web para gestionar cierres de calles y consultar alertas de tránsito en R
 - Reabrir calles, guardar plantillas y configurar una agenda de cierres.
 - Administrar cuentas con roles de administración, operación y consulta.
 - Consultar alertas Waze y registrar su seguimiento municipal con historial.
+- Archivar cada consulta de alertas en una base SQLite independiente, con versiones y reapariciones, mediante el recolector programado cada dos minutos.
+- Guardar nivel del reportante, tipo de vía y origen municipal cuando Waze los informa, sin atribuir identidad personal.
+- Reproducir lecturas históricas en el mapa, guardar zonas circulares compartidas, revisar pares de avisos cercanos y resumir resultados de investigación.
+- Consultar históricos y estadísticas en `/waze/history`: comparación con el período anterior, presencia por día/hora, mapa de zonas de 100 m, permanencia observada, evolución de señales y notas de investigación con autor y fecha. Acceso autenticado; las cuentas de consulta no pueden escribir.
 - Mantener estado persistente en SQLite, control de versiones e idempotencia de solicitudes.
 
 **Publicar en el panel significa actualizar el feed de esta aplicación.** La incorporación efectiva de un cierre en Waze depende de la integración y validación del proveedor. El repositorio no acredita una aprobación de Waze ni permite modificar sus alertas de origen.
@@ -41,7 +45,8 @@ Seguí los comandos de [instalación para Windows o Linux](docs/INSTALACION.md) 
 | `app.py`, `wsgi.py` | Aplicación WSGI, rutas HTTP, sesiones y persistencia |
 | `core.py`, `operations.py`, `direct.py`, `agenda.py` | Cierres, operaciones, plantillas y calendario |
 | `accounts.py` | Cuentas, permisos y auditoría |
-| `monitoring.py`, `collect_waze.py` | Seguimiento de alertas y recolector independiente |
+| `monitoring.py`, `collect_waze.py`, `observation_store.py` | Seguimiento de alertas, recolector independiente y archivo histórico |
+| `history_dashboard.py`, `templates/history.html`, `static/history.*` | Consultas de solo lectura, gráficos y fichas históricas |
 | `catalog.py`, `config/`, `tools/` | Catálogo de calles y herramientas geográficas |
 | `templates/`, `static/` | Interfaz HTML/CSS/JavaScript y Leaflet |
 | `tests/` | Pruebas Python y JavaScript con datos aislados |
@@ -64,3 +69,7 @@ La integración de Gunicorn sobre socket Unix se omite cuando el entorno no es c
 Se publica una copia independiente del código, sin historial del espacio de trabajo, bases de producción, usuarios, sesiones, logs, credenciales ni URL privada del feed Waze. Se excluyen scripts de migración y diagnósticos propios de la infraestructura original.
 
 El código propio no tiene una licencia abierta concedida en esta entrega; cualquier autorización de uso o explotación debe acordarse con su titular. Las dependencias y los datos conservan sus licencias: ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Waze es una marca de su titular; este proyecto no se presenta como producto oficial de Waze.
+
+## Velocidades y recorridos
+
+Vista `/traffic`: velocidad media estimada por recorrido, tiempos de viaje, comparación con lo habitual, mapa e historial por versión. Las altas y bajas en Traffic View se reflejan automáticamente sin borrar el histórico. [Datos, límites y operación](docs/RECORRIDOS.md).

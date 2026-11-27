@@ -29,7 +29,7 @@ Evaluar la funcionalidad y mantenibilidad de un panel municipal de tránsito, y 
 - La lectura del feed por Waze y su aceptación deben verificarse con el proveedor y la cuenta correspondiente. El panel no confirma automáticamente que un cierre ya se vea en Waze.
 - La geometría proviene de OpenStreetMap; no acredita coincidencia exacta con la geometría interna de Waze.
 - El área configurada es operativa, no un límite catastral.
-- El monitoreo procesa alertas; no incluye análisis histórico de congestión ni notificaciones externas.
+- El monitoreo archiva alertas y sus cambios cuando está instalado el recolector programado. El panel `/waze/history` permite consultar períodos, gráficos, calles, fiabilidad y cronologías. No incluye histórico de congestión (`jams`), integración de cámaras ni notificaciones externas.
 - Una alerta que deja de aparecer no se considera automáticamente resuelta. La derivación municipal no envía correos.
 - SQLite y el diseño actual requieren evaluar concurrencia, crecimiento, retención y recuperación para cada instalación.
 - La agenda se materializa al consultar el estado o feed; no es un planificador distribuido independiente.

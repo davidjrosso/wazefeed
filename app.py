@@ -21,6 +21,9 @@ from direct import perform
 from agenda import materialize_map, preview as agenda_preview
 import accounts
 import monitoring
+import history_dashboard
+import history_tools
+import traffic_store
 
 ROOT = Path(__file__).resolve().parent
 
@@ -48,6 +51,8 @@ class App:
         self.secure = url.scheme == 'https'
         self.local_test = cfg.get('WAZE_LOCAL_TEST') == '1'
         self.monitor_path = cfg.get('WAZE_MONITOR_PATH', '/monitor/current.json')
+        self.history_path = cfg.get('WAZE_HISTORY_PATH', str(Path(self.monitor_path).with_name('history.sqlite3')))
+        self.traffic_path = cfg.get('WAZE_TRAFFIC_PATH', str(Path(self.monitor_path).with_name('traffic.sqlite3')))
         self.catalog = load_catalog(cfg.get('WAZE_CATALOG_PATH'))
         if url.query or url.fragment or not url.netloc or not re.fullmatch(r'/[A-Za-z0-9/_-]+', self.base):
             raise ValueError('WAZE_PUBLIC_URL must contain a valid base path, e.g. https://davidrosso.ar/waze')
@@ -83,6 +88,8 @@ class App:
             db.execute('BEGIN IMMEDIATE')
             accounts.initialize(db)
             monitoring.initialize(db)
+            history_dashboard.initialize_notes(db)
+            history_tools.initialize(db)
             columns = {r['name'] for r in db.execute('PRAGMA table_info(sessions)')}
             if 'username' not in columns:
                 db.execute("ALTER TABLE sessions ADD COLUMN username TEXT NOT NULL DEFAULT ''")
@@ -192,8 +199,8 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         route = path[len(self.base):]
         if method in ('GET', 'HEAD'):
-            if route in ('/', '/login', '/legacy'):
-                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html'}[route]
+            if route in ('/', '/login', '/legacy', '/history', '/traffic'):
+                name = {'/': 'console.html', '/legacy': 'index.html', '/login': 'login.html', '/history': 'history.html', '/traffic':'traffic.html'}[route]
                 html = (ROOT / 'templates' / name).read_text(encoding='utf-8').replace('{{BASE}}', self.base)
                 html = html.replace('{{ENV_NOTICE}}', '<div class="test-banner">ENTORNO DE PRUEBAS LOCAL · No publica cierres reales.</div>' if self.local_test else '')
                 return 200, html.encode(), 'text/html; charset=utf-8', []
@@ -203,6 +210,10 @@ class App:
                       '/assets/users.js': ('users.js', 'text/javascript'),
                       '/assets/monitor.js': ('monitor.js', 'text/javascript'),
                       '/assets/monitor.css': ('monitor.css', 'text/css'),
+                      '/assets/history.js': ('history.js', 'text/javascript'),
+                      '/assets/history.css': ('history.css', 'text/css'),
+                      '/assets/traffic.js': ('traffic.js', 'text/javascript'),
+                      '/assets/traffic.css': ('traffic.css', 'text/css'),
                       '/assets/publication.js': ('publication.js', 'text/javascript'),
                       '/assets/agenda.js': ('agenda.js', 'text/javascript'),
                       '/assets/operations.js': ('operations.js', 'text/javascript'),
@@ -226,10 +237,46 @@ class App:
                     return self.json({'status': 'ok'})
                 if route == '/feed.json':
                     return self.json(feed(self.scheduled_state(db)))
-                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/')):
+                if route in ('/api/state', '/api/catalog', '/api/users', '/api/monitor', '/api/history', '/api/history-tools', '/api/history-replay', '/api/traffic') or route.startswith(('/api/requests/', '/api/agenda/', '/api/monitor/', '/api/history/')):
                     session = self.session(environ, db)
                     if session is None:
                         raise HTTPError(401, 'Iniciá sesión como operador.')
+                    if route == '/api/traffic':
+                        try:
+                            from urllib.parse import parse_qs
+                            query = environ.get('QUERY_STRING','')
+                            f = history_dashboard.filters(query,CITY['timezone'])
+                            key = parse_qs(query).get('route',[''])[0]
+                            return self.json(traffic_store.dashboard(self.traffic_path,f,key))
+                        except ValueError as error:
+                            raise HTTPError(400,str(error)) from None
+                        except (sqlite3.Error,OSError):
+                            raise HTTPError(503,'El archivo de recorridos no está disponible. Probá nuevamente o elegí un período más corto.') from None
+                    if route == '/api/history-tools':
+                        return self.json({'zones':history_tools.zones(db),'canWrite':session['role']!='viewer','csrf':session['csrf']})
+                    if route in ('/api/history','/api/history-replay') or route.startswith('/api/history/'):
+                        try:
+                            f = history_dashboard.filters(environ.get('QUERY_STRING',''), CITY['timezone'])
+                            history_tools.resolve_zone(db,f)
+                            if route == '/api/history-replay':
+                                return self.json(history_dashboard.replay(self.history_path,f))
+                            if route == '/api/history':
+                                result=history_dashboard.dashboard(self.history_path,f,db)
+                                result['zone']=f['zone']
+                                return self.json(result)
+                            key = route.removeprefix('/api/history/')
+                            result = history_dashboard.detail(self.history_path, key, f)
+                            if result is None:
+                                raise HTTPError(404, 'No hay observaciones de ese reporte en el período.')
+                            result['municipalHistory'] = monitoring.history(db, key)
+                            result['research'] = history_dashboard.notes(db, key)
+                            result['canWrite'] = session['role'] != 'viewer'
+                            result['csrf'] = session['csrf']
+                            return self.json(result)
+                        except ValueError as error:
+                            raise HTTPError(400, str(error)) from None
+                        except (sqlite3.Error, OSError):
+                            raise HTTPError(503, 'El archivo histórico no está disponible. Probá nuevamente o elegí un período más corto.') from None
                     if route == '/api/monitor':
                         return self.json(monitoring.listing(db, monitoring.read_cache(self.monitor_path)))
                     if route.startswith('/api/monitor/'):
@@ -266,7 +313,7 @@ class App:
             raise HTTPError(404, 'No encontrado.')
         if method != 'POST':
             raise HTTPError(405, 'Método no permitido.')
-        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor'):
+        if route not in ('/api/login', '/api/logout', '/api/state', '/api/users', '/api/monitor', '/api/history-notes', '/api/history-zones', '/api/history-links'):
             raise HTTPError(404, 'No encontrado.')
         body = self.body(environ)
         with self.db() as db:
@@ -316,6 +363,20 @@ class App:
                 return self.json(result)
             if session['role'] == 'viewer':
                 raise HTTPError(403, 'Tu cuenta es de consulta: no puede modificar ni publicar cierres.')
+            if route in ('/api/history-zones','/api/history-links'):
+                try:
+                    return self.json(history_tools.save_zone(db,body,session['username']) if route.endswith('zones') else history_tools.save_link(db,self.history_path,body,session['username']))
+                except ValueError as error:
+                    raise HTTPError(409,str(error)) from None
+                except (sqlite3.Error,OSError):
+                    raise HTTPError(503,'No se pudo completar la operación. Actualizá la consulta para comprobar el resultado.') from None
+            if route == '/api/history-notes':
+                try:
+                    return self.json(history_dashboard.add_note(db, self.history_path, body, session['username']))
+                except ValueError as error:
+                    raise HTTPError(409, str(error)) from None
+                except (sqlite3.Error, OSError):
+                    raise HTTPError(503, 'No se pudo guardar el seguimiento. Reabrí la ficha para comprobar el resultado antes de reintentar.') from None
             if route == '/api/monitor':
                 cache=monitoring.read_cache(self.monitor_path)
                 try:

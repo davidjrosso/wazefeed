@@ -42,6 +42,9 @@ def normalize(item, bounds, now):
             'publishedAt':stamp/1000, 'description':label(item.get('reportDescription'),1000),
             'reliability':number(item.get('reliability'),0,10), 'confidence':number(item.get('confidence'),-1,10),
             'thumbsUp':number(item.get('nThumbsUp'),0,1000000),
+            'reportRating':item.get('reportRating') if type(item.get('reportRating')) is int and 0<=item['reportRating']<=6 else None,
+            'roadType':item.get('roadType') if type(item.get('roadType')) is int and 0<=item['roadType']<=100 else None,
+            'municipalSource':True if item.get('reportByMunicipalityUser') in (True,'true') else False if item.get('reportByMunicipalityUser') in (False,'false') else None,
             'municipal':item.get('reportByMunicipalityUser') in (True,'true'),
             'heading':number(item.get('magvar'),0,359)}
 
